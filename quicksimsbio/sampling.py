@@ -726,7 +726,7 @@ def get_basico_names(
 
     # Build Species Concentrations Table
     if display_species:
-        species_conc_names = bsc.get_species().loc[:, ["display_name"]]
+        species_conc_names = bsc.get_species(model=model).loc[:, ["display_name"]]
         species_conc_names["Type"] = "Species Concentration"
         species_conc_names["Initial"] = "[" + species_conc_names["display_name"] + "]_0"
         species_conc_names["Transient"] = "[" + species_conc_names["display_name"] + "]"
