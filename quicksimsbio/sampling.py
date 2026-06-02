@@ -1,9 +1,10 @@
 import itertools
 import logging
-from typing import Mapping, Optional
+from typing import Any, Mapping, Optional
 
 import basico as bsc
 import numpy as np
+import numpy.typing
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,15 @@ def safe_df(df: Optional[pd.DataFrame]) -> pd.DataFrame:
     return pd.DataFrame() if df is None else df
 
 
-def get_model_inputs(model=None):
+ScanValue = (
+    None
+    | list[float | int]
+    | dict[str, bool | float]
+    | numpy.typing.NDArray[np.floating[Any] | np.integer[Any]]
+)
+
+
+def get_model_inputs(model=None) -> dict[str, ScanValue]:
     """
     This is a working replacement of create_parameter_scan.
     Instead the dictionary will be created from a temporarily created basico parameter_set
@@ -72,7 +81,7 @@ def get_model_inputs(model=None):
     inputs.extend(input_params)
     inputs.extend(species)
 
-    scan_dict = {k: None for k in inputs}
+    scan_dict: dict[str, ScanValue] = {str(k): None for k in inputs}
 
     return scan_dict
 
