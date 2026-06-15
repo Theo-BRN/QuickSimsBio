@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Mapping, Optional
+from typing import Any, Optional
 
 import basico as bsc
 import numpy as np
@@ -83,39 +83,6 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
     inputs.extend(species)
 
     scan_dict: dict[str, ScanValue] = {str(k): None for k in inputs}
-
-    return scan_dict
-
-
-def create_parameter_scan_dict(
-    model: bsc.COPASI.CDataModel | None = None,
-) -> Mapping[str, None | list[float | int] | dict[str, bool | float]]:
-    """
-    Create a dictionary with default 'no-change' values for all model parameters and species.
-
-    Parameters:
-    - model: The model object.
-
-    Returns:
-    - dict: A dictionary with parameters and species as keys and `None` as default values.
-    """
-    dm = model if model is not None else bsc.get_current_model()
-
-    # Fetch all parameters and species from the model
-    all_params = safe_df(bsc.get_parameters(model=dm))
-    if all_params.empty:
-        all_fixed_params = pd.Series()
-    else:
-        all_fixed_params = all_params[all_params["type"] == "fixed"].index
-
-    # Create the dictionary with default 'no-change' values
-    fixed_param_dict = {str(param): None for param in all_fixed_params}
-    species_dict = {
-        str(species): None for species in safe_df(bsc.get_species(model=dm)).index
-    }
-
-    # Merge the two dictionaries
-    scan_dict = {**fixed_param_dict, **species_dict}
 
     return scan_dict
 
