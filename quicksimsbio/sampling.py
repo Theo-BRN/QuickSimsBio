@@ -551,9 +551,6 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
     unresolved_df["constituent_elements"] = unresolved_df["expression"].map(
         extract_items_from_expression
     )
-    logger.info(
-        f"unresolved_df with mapped expressions and items is:\n{unresolved_df['expression', 'constituent_elements']}"
-    )
 
     logger.debug(f"Attempting to resolve the following unresolved df:\n{unresolved_df}")
     logger.debug(f"Using this mapping:\n{agq_expressions}")
