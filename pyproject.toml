@@ -27,3 +27,7 @@ authors = ["Theo-BRN <theobrn@live.co.uk>"]
 packages = [
     { include = "quicksimsbio", from = "src" }
 ]
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.0,<10.0.0)"
+]
