@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Local dev / personal files
+graph_visualisations/
+CLAUDE.md
+TODO.md
+
+# IDE
+.vscode/
