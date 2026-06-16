@@ -284,11 +284,37 @@ def generate_parameter_sets_df(scan_dict):
     return df
 
 
-def generate_sobol_random(df_bounds, n_samples):
-    sampler = qmc.Sobol(d=len(df_bounds.index), scramble=True, seed=3)
-    sample = sampler.random(n=n_samples)
-    scaled_sample = qmc.scale(sample, df_bounds["lower"], df_bounds["upper"])
-    return pd.DataFrame(scaled_sample, columns=df_bounds.index)
+def _sample_quasi_random(
+    df_bounds: pd.DataFrame,
+    n_samples: int,
+    method: str = "sobol",
+    rng=None,
+) -> pd.DataFrame:
+    """Draw quasi-random samples scaled to parameter bounds.
+
+    Args:
+        df_bounds: DataFrame with index = parameter names, columns ["lower", "upper"].
+        n_samples: Number of samples to draw.
+        method: QMC engine to use. One of "sobol", "halton", "lhs".
+        rng: Seed or numpy Generator for reproducibility. None = random each run.
+    """
+    d = len(df_bounds)
+    match method:
+        case "sobol":
+            engine = qmc.Sobol(d=d, scramble=True, rng=rng)
+        case "halton":
+            engine = qmc.Halton(d=d, scramble=True, rng=rng)
+        case "lhs":
+            engine = qmc.LatinHypercube(d=d, rng=rng)
+        case _:
+            raise ValueError(
+                f"Unknown sampling method {method!r}. Choose 'sobol', 'halton', or 'lhs'."
+            )
+    sample = engine.random(n=n_samples)
+    scaled = qmc.scale(
+        sample, df_bounds["lower"].to_numpy(), df_bounds["upper"].to_numpy()
+    )
+    return pd.DataFrame(scaled, columns=list(df_bounds.index))
 
 
 def categorise_scan_dict(scan_dict):
@@ -351,39 +377,52 @@ def combine_param_sets(df1, df2):
     return df_combined
 
 
-def generate_input_space(scan_dict, n_rand_samples, print_summary=None):
+def generate_input_space(
+    scan_dict,
+    n_rand_samples,
+    method: str = "sobol",
+    rng=None,
+):
+    """Generate a combined grid + quasi-random parameter space.
+
+    Args:
+        scan_dict: Dict of parameter names to ScanValue. None = hold at default,
+            list = discrete grid values, dict with "lower"/"upper"/"log" = random range.
+        n_rand_samples: Number of quasi-random samples to draw per grid point.
+        method: QMC engine. One of "sobol" (default), "halton", "lhs".
+        rng: Seed or numpy Generator for reproducibility. None = random each run.
+    """
     cats_dict = categorise_scan_dict(scan_dict)
     rand_dict = cats_dict["random_params"]
 
-    def log_dict(d):
-        return {"upper": np.log10(d["upper"]), "lower": np.log10(d["lower"])}
-
-    logged_params = []
-    sampling_dict = {}
+    # Build bounds using original param names throughout.
+    log_scaled_params: list[str] = []
+    bounds: dict[str, dict[str, float]] = {}
     for param_key, param_value in rand_dict.items():
         if param_value["log"]:
-            sampling_dict[f"log_{param_key}"] = log_dict(param_value)
-            logged_params.append(param_key)
+            bounds[param_key] = {
+                "lower": np.log10(param_value["lower"]),
+                "upper": np.log10(param_value["upper"]),
+            }
+            log_scaled_params.append(param_key)
         else:
-            sampling_dict[param_key] = {
-                "upper": param_value["upper"],
+            bounds[param_key] = {
                 "lower": param_value["lower"],
+                "upper": param_value["upper"],
             }
 
-    df_bounds = pd.DataFrame(sampling_dict).transpose()
-    sobol_samples = generate_sobol_random(df_bounds, n_rand_samples)
+    df_bounds = pd.DataFrame(bounds).T
+    quasi_samples = _sample_quasi_random(
+        df_bounds, n_rand_samples, method=method, rng=rng
+    )
 
-    cols_to_drop = []
-    for each_col in sobol_samples:
-        if each_col.startswith("log_") and each_col[4:] in logged_params:
-            sobol_samples[each_col[4:]] = 10.0 ** sobol_samples[each_col]
-            cols_to_drop.append(each_col)
-    sobol_samples.drop(columns=cols_to_drop, inplace=True)
+    for param_key in log_scaled_params:
+        quasi_samples[param_key] = 10.0 ** quasi_samples[param_key]
 
     grid_samples = generate_parameter_sets_df(
         {**cats_dict["individual_params"], **cats_dict["ranged_params"]}
     )
-    return combine_param_sets(grid_samples, sobol_samples.transpose())
+    return combine_param_sets(grid_samples, quasi_samples.T)
 
 
 def run_individual_simulation_for_param_set(
