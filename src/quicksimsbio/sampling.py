@@ -44,8 +44,8 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
     p_set_names = [n["name"] for n in p_sets]
     limit = 0
     while new_parameter_set_name in p_set_names:
-        print(
-            f"REPLACE AS logger.info: new_parameter_set_name is {new_parameter_set_name}, while p_set_names are:\n{p_set_names}"
+        logger.info(
+            f"temporary parameter set name '{new_parameter_set_name}' already exists, trying next"
         )
         new_parameter_set_name = f"{new_parameter_set_name} copy"
         limit += 1
@@ -88,7 +88,7 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
 
 
 def default_timepoints():
-    print("⚠️ No timepoints set — defaulting to 0 → 1000 s (n=300)")
+    logger.warning("No timepoints set — defaulting to 0 → 1000 s (n=300)")
     return np.linspace(0, 1000, 300).tolist()
 
 
@@ -175,7 +175,9 @@ def run_simulations(
     if format_output == "wide":
         return sim_df_all
     elif format_output != "long":
-        print("Please supply either 'long' or 'wide' as the format output")
+        raise ValueError(
+            f"format_output must be 'wide' or 'long', got {format_output!r}"
+        )
     else:
         return auto_melt(sim_df_all, model=dm)
 
