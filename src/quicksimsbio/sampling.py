@@ -827,72 +827,84 @@ def get_basico_names(
 
     # Build Global Quantities Table
     if display_parameters:
-        parameter_names = safe_df(bsc.get_parameters(model=model)).loc[
-            :, ["display_name"]
-        ]
-        parameter_names["Type"] = "Parameter"
-        parameter_names["Initial"] = parameter_names["display_name"] + ".InitialValue"
-        parameter_names["Transient"] = parameter_names["display_name"]
-        parameter_names["Rate"] = parameter_names["display_name"] + ".Rate"
-        parameter_names.drop(columns=["display_name"], inplace=True)
-        df_list.append(parameter_names)
+        params = safe_df(bsc.get_parameters(model=model))
+        if not params.empty:
+            parameter_names = params.loc[:, ["display_name"]]
+            parameter_names["Type"] = "Parameter"
+            parameter_names["Initial"] = (
+                parameter_names["display_name"] + ".InitialValue"
+            )
+            parameter_names["Transient"] = parameter_names["display_name"]
+            parameter_names["Rate"] = parameter_names["display_name"] + ".Rate"
+            parameter_names.drop(columns=["display_name"], inplace=True)
+            df_list.append(parameter_names)
 
     # Build Species Concentrations Table
     if display_species:
-        species_conc_names = bsc.get_species(model=model).loc[:, ["display_name"]]
-        species_conc_names["Type"] = "Species Concentration"
-        species_conc_names["Initial"] = "[" + species_conc_names["display_name"] + "]_0"
-        species_conc_names["Transient"] = "[" + species_conc_names["display_name"] + "]"
-        species_conc_names["Rate"] = species_conc_names["display_name"] + ".Rate"
-        species_conc_names.drop(columns=["display_name"], inplace=True)
-        species_conc_names.index = (
-            "["
-            + species_conc_names.index
-            + "] ("
-            + bsc.get_model_units()["quantity_unit"]
-            + ")"
-        )
-        df_list.append(species_conc_names)
+        species = safe_df(bsc.get_species(model=model))
+        if not species.empty:
+            species_conc_names = species.loc[:, ["display_name"]]
+            species_conc_names["Type"] = "Species Concentration"
+            species_conc_names["Initial"] = (
+                "[" + species_conc_names["display_name"] + "]_0"
+            )
+            species_conc_names["Transient"] = (
+                "[" + species_conc_names["display_name"] + "]"
+            )
+            species_conc_names["Rate"] = species_conc_names["display_name"] + ".Rate"
+            species_conc_names.drop(columns=["display_name"], inplace=True)
+            species_conc_names.index = (
+                "["
+                + species_conc_names.index
+                + "] ("
+                + bsc.get_model_units()["quantity_unit"]
+                + ")"
+            )
+            df_list.append(species_conc_names)
 
-        # Build Species Particles Table
-        species_particle_names = bsc.get_species().loc[:, ["display_name"]]
-        species_particle_names["Type"] = "Species Particle"
-        species_particle_names["Initial"] = (
-            species_particle_names["display_name"] + ".InitialParticleNumber"
-        )
-        species_particle_names["Transient"] = species_particle_names["display_name"]
-        species_particle_names["Rate"] = (
-            species_particle_names["display_name"] + ".ParticleNumberRate"
-        )
-        species_particle_names.drop(columns=["display_name"], inplace=True)
-        species_particle_names.index = (
-            species_particle_names.index + " (Particle Number)"
-        )
-        df_list.append(species_particle_names)
+            # Build Species Particles Table
+            species_particle_names = species.loc[:, ["display_name"]]
+            species_particle_names["Type"] = "Species Particle"
+            species_particle_names["Initial"] = (
+                species_particle_names["display_name"] + ".InitialParticleNumber"
+            )
+            species_particle_names["Transient"] = species_particle_names["display_name"]
+            species_particle_names["Rate"] = (
+                species_particle_names["display_name"] + ".ParticleNumberRate"
+            )
+            species_particle_names.drop(columns=["display_name"], inplace=True)
+            species_particle_names.index = (
+                species_particle_names.index + " (Particle Number)"
+            )
+            df_list.append(species_particle_names)
 
     # Build Compartments Table
     if display_compartments:
-        compartment_names = safe_df(bsc.get_compartments()).loc[:, ["display_name"]]
-        compartment_names["Type"] = "Compartment"
-        compartment_names["Initial"] = (
-            compartment_names["display_name"] + ".InitialVolume"
-        )
-        compartment_names["Transient"] = compartment_names["display_name"]
-        compartment_names["Rate"] = compartment_names["display_name"] + ".Rate"
-        compartment_names.drop(columns=["display_name"], inplace=True)
-        df_list.append(compartment_names)
+        compartments = safe_df(bsc.get_compartments(model=model))
+        if not compartments.empty:
+            compartment_names = compartments.loc[:, ["display_name"]]
+            compartment_names["Type"] = "Compartment"
+            compartment_names["Initial"] = (
+                compartment_names["display_name"] + ".InitialVolume"
+            )
+            compartment_names["Transient"] = compartment_names["display_name"]
+            compartment_names["Rate"] = compartment_names["display_name"] + ".Rate"
+            compartment_names.drop(columns=["display_name"], inplace=True)
+            df_list.append(compartment_names)
 
     # Build Reactions Table
     if display_reactions:
-        reactions_names = safe_df(bsc.get_reactions()).loc[:, ["display_name"]]
-        reactions_names["Type"] = "Reaction"
-        reactions_names["Flux Concentration"] = (
-            reactions_names["display_name"] + ".Flux"
-        )
-        reactions_names["Flux Particle Number"] = (
-            reactions_names["display_name"] + ".ParticleFlux"
-        )
-        reactions_names.drop(columns=["display_name"], inplace=True)
-        df_list.append(reactions_names)
+        reactions = safe_df(bsc.get_reactions(model=model))
+        if not reactions.empty:
+            reactions_names = reactions.loc[:, ["display_name"]]
+            reactions_names["Type"] = "Reaction"
+            reactions_names["Flux Concentration"] = (
+                reactions_names["display_name"] + ".Flux"
+            )
+            reactions_names["Flux Particle Number"] = (
+                reactions_names["display_name"] + ".ParticleFlux"
+            )
+            reactions_names.drop(columns=["display_name"], inplace=True)
+            df_list.append(reactions_names)
 
-    return pd.concat(df_list)
+    return pd.concat(df_list) if df_list else pd.DataFrame()
