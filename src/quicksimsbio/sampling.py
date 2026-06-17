@@ -183,7 +183,6 @@ def run_simulations(
     scan_dict,
     timepoints=None,
     output_selection=None,
-    specified_FGQs=None,
     format_output="wide",
     *,
     include_input_params=None,
@@ -199,7 +198,6 @@ def run_simulations(
         timepoints: List of time values to simulate. Defaults to 0–1000 s (n=300).
         output_selection: Explicit list of basico output names. When None, defaults
             to all transient species.
-        specified_FGQs: Optional fixed global quantities override.
         format_output: 'wide' (default) or 'long' (via auto_melt).
         include_input_params: True = always append varied-parameter columns to output.
             None (default) = append only when no explicit output_selection was given.
@@ -235,7 +233,6 @@ def run_simulations(
             param_set=param_set,
             timepoints=timepoints,
             output_selection=output_selection,
-            specified_FGQs=specified_FGQs,
             sim_num=sim_num,
             model=dm,
             **kwargs,
