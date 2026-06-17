@@ -35,9 +35,6 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
     This is a working replacement of create_parameter_scan.
     Instead the dictionary will be created from a temporarily created basico parameter_set
     """
-    # TODO add argument to this to also provide the default/currently loaded values in single element lists instead of None
-    # (would be a quick way of seeing the current parameters etc)
-
     # Should work off given model or globally loaded model
     dm = model if model is not None else bsc.get_current_model()
 
@@ -126,7 +123,6 @@ def _input_param_outputs(varying_params, model) -> list[str]:
     species_df = safe_df(bsc.get_species(model=model))
     set_species = set(species_df.index)
 
-    # TODO Replace this with display name column from params_df instead of string manipulation
     output_params = [f"Values[{key}]" for key in varying_params if key in set_params]
     output_species = [f"[{key}]_0" for key in varying_params if key in set_species]
 
@@ -385,7 +381,7 @@ def categorise_scan_dict(scan_dict):
         elif isinstance(scan_dict_value, dict):
             required_inputs = {"upper", "lower"}
             if required_inputs <= scan_dict_value.keys():
-                random_params[key] = scan_dict_value
+                random_params[key] = dict(scan_dict_value)
             else:
                 missing_bound = [
                     e for e in required_inputs if e not in scan_dict_value.keys()
@@ -499,7 +495,6 @@ def run_individual_simulation_for_param_set(
     param_set,
     timepoints,
     output_selection,
-    specified_FGQs=None,
     sim_num=None,
     *,
     model: bsc.COPASI.CDataModel | None = None,
@@ -720,15 +715,14 @@ def initialise_status_df(*, model: bsc.COPASI.CDataModel):
         id_vars=["Core_Constituent", "Type"],
     )
     status_df.dropna(inplace=True)
-    status_label = "independent/dependent/unknown"
-    status_df[status_label] = None
+    status_df[STATUS_LABEL] = None
     status_df.set_index("name", inplace=True)
     new_row = pd.DataFrame(
         {
             "Core_Constituent": "Time",
             "Type": "Time",
             "Descriptor": "Model Time",
-            "independent/dependent/unknown": "independent",
+            STATUS_LABEL: "independent",
         },
         index=["Time"],
     )
@@ -882,7 +876,7 @@ def resolve_elements_list(elements, status_df):
     if not all(elements_present.values()):
         raise ValueError(f"Not all elements in {elements_present.keys()} were present")
 
-    dependencies = status_df.loc[elements, "independent/dependent/unknown"]
+    dependencies = status_df.loc[elements, STATUS_LABEL]
 
     if any(dependencies == "dependent"):
         result = "dependent"
