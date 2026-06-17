@@ -617,7 +617,7 @@ def set_model_parameters(param_set, *, model: bsc.COPASI.CDataModel):
 
 
 def initialise_status_df(*, model: bsc.COPASI.CDataModel):
-    df_bsc_names = get_basico_names(model=model)
+    df_bsc_names = get_basico_outputs(model=model)
     # All variables depend on a 'core constituent' (themselves or something else)
     df_bsc_names["Core_Constituent"] = np.where(
         df_bsc_names["Transient"].notna(),
@@ -810,7 +810,7 @@ def resolve_elements_list(elements, status_df):
     return result
 
 
-def get_basico_names(
+def get_basico_outputs(
     display_parameters=True,
     display_species=True,
     display_reactions=True,
