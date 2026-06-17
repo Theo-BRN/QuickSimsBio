@@ -184,57 +184,44 @@ def run_simulations(
 
 def auto_melt(
     simulation_df,
-    vars_dict=None,
     var_name=OUTPUT_TYPE_NAME,
     value_name=OUTPUT_VALUE_NAME,
     *,
     model: bsc.COPASI.CDataModel,
 ):
-
-    if vars_dict is None:
-        vars_dict = get_dependency_dictionary(model=model)
-        logger.debug(
-            f"generating variables dictionary based on currently loaded model: '{bsc.get_model_name()}'"
-        )
-
+    logger.debug(f"attempting to auto_melt df with columns:\n{simulation_df.columns}")
+    vars_dict = get_dependency_dictionary(model=model)
     independent_vars, dependent_vars, remaining_unknown_vars = vars_dict.values()
-
-    if len(remaining_unknown_vars) > 0:
-        logger.debug(
-            f"some variable names did not have a resolved dependency status: {remaining_unknown_vars}"
-        )
-
     logger.debug(
-        f"auto_melt function is trying to melt the simulation_df, with columns\n {simulation_df.columns}"
-    )
-    logger.debug(
-        f"Using the independent_vars: {independent_vars}\nthe dependent_vars: {dependent_vars}"
+        f"dependency dictionary had "
+        f"\n{len(independent_vars)} independent_vars:\n{independent_vars}, "
+        f"\n{len(dependent_vars)} dependent_vars:\n{dependent_vars} and "
+        f"\n{len(remaining_unknown_vars)} remaining_unknown_vars:\n{remaining_unknown_vars}"
     )
 
-    # pd.melt breaks if there are duplicate indepdenent_vars columns!
+    # checking for duplicate independent_vars columns (else pd.melt breaks)
     duplicate_col_names = simulation_df.columns[
         simulation_df.columns.duplicated()
     ].unique()
     if len(duplicate_col_names) > 0:
+        # removing duplicates if possible
         for col in set(duplicate_col_names):
             duplicates = simulation_df.loc[:, simulation_df.columns == col]
             if (duplicates.nunique(axis=1) == 1).all():
                 logger.debug(
-                    f"The column {col} appears more than once, but with identical data, duplicates will be removed."
+                    f"While trying to auto_melt a dataframe, the column {col} appeared more than once, but with identical data, duplicates will be removed."
                 )
             else:
                 raise ValueError(
-                    f"The column {col} appears more than once, containing different data, unsure which columns to remove."
+                    f"While trying to auto_melt a dataframe, the column {col} appeared more than once, containing different data, unsure which columns to remove."
                 )
         # reset df to not include duplicate cols
         simulation_df = simulation_df.loc[:, ~simulation_df.columns.duplicated()].copy()
 
-    # pd.melt breaks if id_vars have duplicate (but not if there are duplicate value_vars)
-    independent_vars = list(
-        dict.fromkeys(independent_vars)
-    )  # preserves order, removes duplicates
+    # remove duplicates (else pd.melt breaks), while preserving order (preference)
+    independent_vars = list(dict.fromkeys(independent_vars))
 
-    # pd.melt breaks if the supplied id_vars or value_vars are not present in the df
+    # the supplied id_vars and value_vars must be present in the df or else pd.melt breaks
     independent_vars = [
         indep_var
         for indep_var in independent_vars
