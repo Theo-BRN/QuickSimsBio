@@ -299,7 +299,7 @@ def curve_fit_with_error_handling(
         )
         return params, params_covariance
     except Exception as e:  # catch RuntimeError, ValueError, etc.
-        print(f"[fit error] {e}")
+        logger.warning(f"[fit error] {e}")
         return None, None
 
 
@@ -363,30 +363,21 @@ def fit_curve_to_data(
         maxfev=10000,
     )
     if report_fit_summary:
-        print("Fit Summary:")
-        print(
-            np.array(
-                [
-                    [
-                        "",
-                    ].extend(parameter_names),
-                    [
-                        "Initial Guess",
-                    ].extend(initial_guess_values),
-                    [
-                        "Lower Bound",
-                    ].extend(lower_bounds),
-                    [
-                        "Upper Bound",
-                    ].extend(upper_bounds),
-                    [
-                        "Fit Result",
-                    ].extend(
-                        params if params else "Curve fitting failed" * parameter_names
-                    ),
-                ]
-            )
-        )
+        # Rows = parameters, columns = each stage of the fit. Bounds columns are only
+        # included when bounds were actually used (otherwise the lists are empty).
+        summary = {
+            "Initial Guess": initial_guess_values,
+            "Fit Result": (
+                params
+                if params is not None
+                else ["curve fitting failed"] * len(parameter_names)
+            ),
+        }
+        if use_bounds:
+            summary["Lower Bound"] = lower_bounds
+            summary["Upper Bound"] = upper_bounds
+        summary_df = pd.DataFrame(summary, index=parameter_names)
+        logger.info("Fit summary:\n%s", summary_df)
 
     # Handling error of unsuccessful curve fit
     if params is None or params_covariance is None:
@@ -418,20 +409,12 @@ def fit_curve_to_data(
     # We can unpack the parameters and their errors together:
     full_params_dict = {**params_dict, **params_std_dev_dict}
 
-    # We can now populate the dictionary with covariances
-    # cov matrices are symmetric as the covariance is commutative, so only picking top right
+    # We can now populate the dictionary with covariances.
+    # The covariance matrix is symmetric (covariance is commutative), so we only take
+    # the upper triangle (i < j); the diagonal is the variance, already stored as stdev.
     for i, name1 in enumerate(parameter_names):
         for j, name2 in enumerate(parameter_names):
             if i < j:
-                full_params_dict[f"Cov({name1}, {name2})"] = params_covariance[i, j]
-
-    full_params_dict = {**params_dict, **params_std_dev_dict}
-
-    for i, name1 in enumerate(parameter_names):
-        for j, name2 in enumerate(parameter_names):
-            if (
-                i < j
-            ):  # Diagonal already stored, and cov_matrix is symmetric as cov is commutative
                 full_params_dict[f"Cov({name1}, {name2})"] = params_covariance[i, j]
 
     return full_params_dict
