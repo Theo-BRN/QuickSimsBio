@@ -14,7 +14,7 @@ TIME_SECONDS_COLUMN = "Time (seconds)"
 TIME_MINUTES_COLUMN = "Time (minutes)"
 OUTPUT_VALUE_NAME = "Model_Output"
 OUTPUT_TYPE_NAME = "Model_Output_Type"
-STATUS_LABEL = "independent/dependent/unknown"
+STATUS_LABEL = "dependency_status"
 
 
 def safe_df(df: Optional[pd.DataFrame]) -> pd.DataFrame:
@@ -572,23 +572,28 @@ def create_status_df(*, model: bsc.COPASI.CDataModel):
     ] = "dependent"
     status_df.loc[status_df["Type"] == "Reaction", STATUS_LABEL] = "dependent"
 
-    # Parameters can be fixed or assigned
-    params_or_none = bsc.get_parameters(model=model)
-    all_params_df = params_or_none if params_or_none is not None else pd.DataFrame()
-    fixed_params = all_params_df.loc[all_params_df["type"] == "fixed", "display_name"]
-    is_fixed_param = (status_df["Type"] == "Parameter") & (
-        status_df["Core_Constituent"].isin(fixed_params)
-    )
-    status_df.loc[is_fixed_param, ["Type"]] = "Fixed Parameter"
-    status_df.loc[is_fixed_param, STATUS_LABEL] = "independent"
-    assigned_params = all_params_df.loc[
-        all_params_df["type"] == "assignment", "display_name"
-    ]
-    is_assigned_param = (status_df["Type"] == "Parameter") & (
-        status_df["Core_Constituent"].isin(assigned_params)
-    )
-    status_df.loc[is_assigned_param, ["Type"]] = "Assigned Parameter"
-    status_df.loc[is_assigned_param, STATUS_LABEL] = "unknown"
+    # Parameters can be fixed or assigned, determining some variable dependency
+    params_df = safe_df(bsc.get_parameters(model=model))
+    if not params_df.empty:
+        # Collate fixed or assigned params
+        fixed_params = params_df.loc[params_df["type"] == "fixed", "display_name"]
+        assigned_params = params_df.loc[
+            params_df["type"] == "assignment", "display_name"
+        ]
+
+        # Create bool series
+        is_fixed_param = (status_df["Type"] == "Parameter") & (
+            status_df["Core_Constituent"].isin(fixed_params)
+        )
+        is_assigned_param = (status_df["Type"] == "Parameter") & (
+            status_df["Core_Constituent"].isin(assigned_params)
+        )
+
+        # Update labelling and dependency where possible
+        status_df.loc[is_fixed_param, ["Type"]] = "Fixed Parameter"
+        status_df.loc[is_fixed_param, STATUS_LABEL] = "independent"
+        status_df.loc[is_assigned_param, ["Type"]] = "Assigned Parameter"
+        status_df.loc[is_assigned_param, STATUS_LABEL] = "unknown"
 
     # The Compartment Volume can be fixed or assigned
     all_comps = safe_df(bsc.get_compartments())
