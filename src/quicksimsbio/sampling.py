@@ -181,6 +181,7 @@ def run_simulations(
     output_selection=None,
     format_output="wide",
     *,
+    method: str = "sobol",
     include_input_params=None,
     include_time=None,
     n_rand_samples=None,
@@ -210,7 +211,7 @@ def run_simulations(
     varying_params = {
         key: value for key, value in scan_dict.items() if value is not None
     }
-    param_sets_df = generate_input_space(varying_params, n_rand_samples)
+    param_sets_df = generate_input_space(varying_params, n_rand_samples, method=method)
 
     output_selection = _build_output_selection(
         model=dm,
