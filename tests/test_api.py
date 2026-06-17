@@ -44,6 +44,28 @@ def test_run_simulations_default_outputs(model_name):
 
 
 @pytest.mark.parametrize("model_name", BROAD_MODELS)
+def test_run_simulations_long_format(model_name):
+    """format_output='long' must auto_melt without crashing or leaking 'error:' sentinels.
+
+    Exercises the dependency-resolution path that the wide-format tests skip:
+    - models with no global parameters (brusselator) hit the resolver early-return
+    - models with assigned quantities (MAPK-HF96-layout) actually resolve dependencies
+    """
+    dm = bsc.load_example(model_name)
+    inputs = qsb.get_model_inputs(model=dm)
+    result = qsb.run_simulations(inputs, [0, 1, 5], format_output="long", model=dm)
+    assert isinstance(result, pd.DataFrame)
+    assert "Time" in result.columns
+    # auto_melt produces a long frame with a single output-type column and value column
+    assert result.shape[1] < len(inputs) + 5
+    # the "error:" sentinel from resolve_elements_list must never reach the output
+    leaked_errors = (
+        result.astype(str).apply(lambda s: s.str.startswith("error:")).any().any()
+    )
+    assert not leaked_errors
+
+
+@pytest.mark.parametrize("model_name", BROAD_MODELS)
 def test_run_simulations_single_param_scan(model_name):
     dm = bsc.load_example(model_name)
     inputs = qsb.get_model_inputs(model=dm)
@@ -73,6 +95,19 @@ def test_generate_input_space_shape(model_name):
     space = qsb.generate_input_space(inputs, n_rand_samples=n_sobol)
     assert isinstance(space, pd.DataFrame)
     assert space.shape == (2, n_list_values * n_sobol)
+
+
+def test_generate_input_space_does_not_mutate_scan_dict():
+    """A bound dict without 'log' must not gain a 'log' key in the caller's scan_dict."""
+    dm = bsc.load_example("LM-test1")
+    inputs = qsb.get_model_inputs(model=dm)
+    first_key = list(inputs)[0]
+    bound = {"lower": 0.5, "upper": 2.0}  # deliberately no "log"
+    inputs[first_key] = bound
+    qsb.generate_input_space(inputs, n_rand_samples=4)
+    # `bound` is the exact object we put in the scan_dict, so an in-place mutation
+    # by generate_input_space would show up as a new "log" key here.
+    assert "log" not in bound
 
 
 # --- get_basico_outputs ---
