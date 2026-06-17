@@ -611,6 +611,11 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
     These unknown dependencies arise from assigned parameters or compartments.
     """
 
+    # Early return when there is nothing to resolve - when no model parameters
+    if not (status_df[STATUS_LABEL] == "unknown").any():
+        logger.info("No unknown dependencies to resolve; status_df already complete.")
+        return status_df
+
     # Generating expressions mapping
     param_df = safe_df(bsc.get_parameters(model=model))
     agq_expressions = param_df[param_df["type"] == "assignment"].set_index(
