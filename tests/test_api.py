@@ -18,6 +18,7 @@ BASICO_NAMES_MODELS = ["LM-test1", "MAPK-HF96-layout"]
 
 # --- get_model_inputs ---
 
+
 @pytest.mark.parametrize("model_name", BROAD_MODELS)
 def test_get_model_inputs_returns_none_dict(model_name):
     dm = bsc.load_example(model_name)
@@ -28,6 +29,7 @@ def test_get_model_inputs_returns_none_dict(model_name):
 
 
 # --- run_simulations ---
+
 
 @pytest.mark.parametrize("model_name", BROAD_MODELS)
 def test_run_simulations_default_outputs(model_name):
@@ -58,6 +60,7 @@ def test_run_simulations_single_param_scan(model_name):
 
 # --- generate_input_space ---
 
+
 @pytest.mark.parametrize("model_name", BROAD_MODELS)
 def test_generate_input_space_shape(model_name):
     dm = bsc.load_example(model_name)
@@ -72,14 +75,15 @@ def test_generate_input_space_shape(model_name):
     assert space.shape == (2, n_list_values * n_sobol)
 
 
-# --- get_basico_names ---
+# --- get_basico_outputs ---
 # Only tested on models where bsc.get_parameters() returns a valid DataFrame.
 # See TODO step 4 for the fix needed to support all models.
+
 
 @pytest.mark.parametrize("model_name", BASICO_NAMES_MODELS)
 def test_get_basico_names_returns_dataframe_with_type_column(model_name):
     dm = bsc.load_example(model_name)
-    names = qsb.get_basico_names(model=dm)
+    names = qsb.get_basico_outputs(model=dm)
     assert isinstance(names, pd.DataFrame)
     assert "Type" in names.columns
 
@@ -89,9 +93,13 @@ def test_get_basico_names_species_are_valid_simulation_outputs(model_name):
     """Species names from get_basico_names should be accepted by run_simulations."""
     dm = bsc.load_example(model_name)
     inputs = qsb.get_model_inputs(model=dm)
-    names = qsb.get_basico_names(model=dm)
-    species_outputs = names[names["Type"] == "Species Concentration"]["Transient"].tolist()
+    names = qsb.get_basico_outputs(model=dm)
+    species_outputs = names[names["Type"] == "Species Concentration"][
+        "Transient"
+    ].tolist()
     assert len(species_outputs) > 0
-    result = qsb.run_simulations(inputs, [0, 1, 5], output_selection=species_outputs, model=dm)
+    result = qsb.run_simulations(
+        inputs, [0, 1, 5], output_selection=species_outputs, model=dm
+    )
     assert isinstance(result, pd.DataFrame)
     assert set(species_outputs) <= set(result.columns)
