@@ -95,6 +95,90 @@ def default_timepoints():
     return np.linspace(0, 1000, 300).tolist()
 
 
+def _default_species_outputs(model, conc_or_number="Concentration") -> list[str]:
+    """Returns transient species output names for all species in the model."""
+    outputs = get_basico_outputs(
+        display_parameters=False,
+        display_species=True,
+        display_reactions=False,
+        display_compartments=False,
+        model=model,
+    )
+    if outputs.empty:
+        return []
+    elif conc_or_number == "Concentration":
+        return outputs.loc[
+            outputs["Type"] == "Species Concentration", "Transient"
+        ].to_list()
+    elif conc_or_number == "Particle":
+        return outputs.loc[outputs["Type"] == "Species Particle", "Transient"].to_list()
+    else:
+        raise ValueError(
+            "Please supply 'Concentration' or 'Particle' for default species output"
+        )
+
+
+def _input_param_outputs(varying_params, model) -> list[str]:
+    """Returns basico output names for the parameters/species that were varied,
+    so results DataFrames record what changed in each simulation."""
+    params = safe_df(bsc.get_parameters(model=model))
+    set_params = set([] if params.empty else params.index)
+    species_df = safe_df(bsc.get_species(model=model))
+    set_species = set(species_df.index)
+
+    # TODO Replace this with display name column from params_df instead of string manipulation
+    output_params = [f"Values[{key}]" for key in varying_params if key in set_params]
+    output_species = [f"[{key}]_0" for key in varying_params if key in set_species]
+
+    unrecognised = [
+        key for key in varying_params if key not in set_params | set_species
+    ]
+    if unrecognised:
+        logger.warning(
+            f"scan_dict items {unrecognised} were not recognised as species or parameters"
+        )
+
+    return output_params + output_species
+
+
+def _build_output_selection(
+    model,
+    output_selection,
+    varying_params,
+    include_input_params,
+    include_time,
+):
+    """Resolve the full output_selection list from the user's intent.
+
+    When output_selection is None, defaults to all transient species concentrations.
+    In this case, include_input_params=None is promoted to True so the results
+    DataFrame automatically records which parameter values produced each simulation.
+    When output_selection is provided, include_input_params stays None (falsy) and
+    nothing is appended unless the caller explicitly passes include_input_params=True.
+    Time is always prepended as the first column unless include_time=False.
+    """
+    if output_selection is None:
+        output_selection = _default_species_outputs(model=model)
+
+        if include_input_params is None:
+            include_input_params = True
+    else:
+        if not isinstance(output_selection, list):
+            raise ValueError("Please supply output selection as a list")
+
+    # Add input params
+    if include_input_params:
+        output_selection = output_selection + _input_param_outputs(
+            varying_params, model=model
+        )
+
+    # User must set include_time as False to drop Time column
+    if include_time is not False:
+        output_selection = ["Time"] + output_selection
+
+    return output_selection
+
+
 def run_simulations(
     scan_dict,
     timepoints=None,
@@ -102,59 +186,45 @@ def run_simulations(
     specified_FGQs=None,
     format_output="wide",
     *,
+    include_input_params=None,
+    include_time=None,
     n_rand_samples=None,
     model: bsc.COPASI.CDataModel | None = None,
     **kwargs,
 ):
+    """Run time-course simulations over all parameter combinations in scan_dict.
+
+    Args:
+        scan_dict: Parameter combinations to iterate over (from get_model_inputs).
+        timepoints: List of time values to simulate. Defaults to 0–1000 s (n=300).
+        output_selection: Explicit list of basico output names. When None, defaults
+            to all transient species.
+        specified_FGQs: Optional fixed global quantities override.
+        format_output: 'wide' (default) or 'long' (via auto_melt).
+        include_input_params: True = always append varied-parameter columns to output.
+            None (default) = append only when no explicit output_selection was given.
+            False = never append.
+        include_time: True = always prepend Time column. None (default) = prepend only
+            when no explicit output_selection was given. False = never prepend.
+        n_rand_samples: Required when scan_dict contains Sobol bound dicts.
+        model: COPASI model. Defaults to the globally loaded model.
+    """
     dm = model if model is not None else bsc.get_current_model()
     timepoints = timepoints if timepoints is not None else default_timepoints()
-
-    # Default output selection are the species
-    if output_selection is None:
-        species_names = bsc.get_species(model=dm).index.tolist()
-        output_selection = [f"[{species}]" for species in species_names]
-
-    if "Time" not in output_selection:
-        output_selection = ["Time"] + output_selection
 
     # Extract parameters that need to be varied from the scan_dict
     varying_params = {
         key: value for key, value in scan_dict.items() if value is not None
     }
+    param_sets_df = generate_input_space(varying_params, n_rand_samples)
 
-    has_sobol_params = any(isinstance(v, dict) for v in varying_params.values())
-    if has_sobol_params:
-        if n_rand_samples is None:
-            raise ValueError(
-                "scan_dict contains Sobol bound dicts but n_rand_samples was not provided. "
-                "Pass n_rand_samples=<int> to run_simulations."
-            )
-        param_sets_df = generate_input_space(varying_params, n_rand_samples)
-    else:
-        param_sets_df = generate_parameter_sets_df(varying_params)
-
-    # scan_dict keys should be in the output selection, but are formatted differently when extracted
-    params = bsc.get_parameters(model=dm)
-    set_params = set([] if params is None else params.index)
-    output_params = [
-        f"Values[{key}]" for key in varying_params.keys() if key in set_params
-    ]
-
-    set_species = set(bsc.get_species(model=dm).index)
-    output_species = [
-        f"[{key}]_0" for key in varying_params.keys() if key in set_species
-    ]
-
-    # (I think) the only things to change are the initial species concentrations or parameters, so will warn if anything else found
-    output_neither_param_nor_species = [
-        key for key in varying_params.keys() if key not in set_species | set_params
-    ]
-    if output_neither_param_nor_species:
-        logger.warning(
-            f"scan_dict items: {output_neither_param_nor_species} were not recognised as species or parameters"
-        )
-
-    output_selection = output_selection + output_params + output_species
+    output_selection = _build_output_selection(
+        model=dm,
+        output_selection=output_selection,
+        varying_params=varying_params,
+        include_input_params=include_input_params,
+        include_time=include_time,
+    )
 
     # Iterate over each parameter set
     sim_df_list = []
@@ -246,7 +316,7 @@ def auto_melt(
     return simulation_df
 
 
-def generate_parameter_sets_df(scan_dict):
+def _generate_parameter_sets_df(scan_dict):
     """
     Create a dataframe with columns corresponding to different parameter sets derived from the scan_dict.
 
@@ -369,21 +439,34 @@ def combine_param_sets(df1, df2):
 
 def generate_input_space(
     scan_dict,
-    n_rand_samples,
+    n_rand_samples=None,
     method: str = "sobol",
     rng=None,
 ):
-    """Generate a combined grid + quasi-random parameter space.
+    """Generate a parameter space from any scan_dict, handling both grid and quasi-random params.
 
     Args:
         scan_dict: Dict of parameter names to ScanValue. None = hold at default,
             list = discrete grid values, dict with "lower"/"upper"/"log" = random range.
         n_rand_samples: Number of quasi-random samples to draw per grid point.
+            Required when scan_dict contains quasi-random bound dicts; ignored otherwise.
         method: QMC engine. One of "sobol" (default), "halton", "lhs".
         rng: Seed or numpy Generator for reproducibility. None = random each run.
     """
     cats_dict = categorise_scan_dict(scan_dict)
     rand_dict = cats_dict["random_params"]
+
+    # Grid-only path: no quasi-random params present
+    if not rand_dict:
+        grid_params = {**cats_dict["individual_params"], **cats_dict["ranged_params"]}
+        return _generate_parameter_sets_df(grid_params)
+
+    # Quasi-random path
+    if n_rand_samples is None:
+        raise ValueError(
+            "scan_dict contains quasi-random bound dicts but n_rand_samples was not provided. "
+            "Pass n_rand_samples=<int> to generate_input_space."
+        )
 
     # Build bounds using original param names throughout.
     log_scaled_params: list[str] = []
@@ -409,7 +492,7 @@ def generate_input_space(
     for param_key in log_scaled_params:
         quasi_samples[param_key] = 10.0 ** quasi_samples[param_key]
 
-    grid_samples = generate_parameter_sets_df(
+    grid_samples = _generate_parameter_sets_df(
         {**cats_dict["individual_params"], **cats_dict["ranged_params"]}
     )
     return combine_param_sets(grid_samples, quasi_samples.T)
