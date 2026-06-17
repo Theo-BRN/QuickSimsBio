@@ -35,6 +35,9 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
     This is a working replacement of create_parameter_scan.
     Instead the dictionary will be created from a temporarily created basico parameter_set
     """
+    # TODO add argument to this to also provide the default/currently loaded values in single element lists instead of None
+    # (would be a quick way of seeing the current parameters etc)
+
     # Should work off given model or globally loaded model
     dm = model if model is not None else bsc.get_current_model()
 
@@ -166,7 +169,7 @@ def run_simulations(
             sim_num=sim_num,
             model=dm,
             **kwargs,
-        )  # TODO see if this breaks with model being supplied twice (once in kwargs once as named)
+        )
         sim_df_list.append(sim_df)
 
     # Concatenate all individual simulation dataframes

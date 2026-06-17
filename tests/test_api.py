@@ -76,8 +76,6 @@ def test_generate_input_space_shape(model_name):
 
 
 # --- get_basico_outputs ---
-# Only tested on models where bsc.get_parameters() returns a valid DataFrame.
-# See TODO step 4 for the fix needed to support all models.
 
 
 @pytest.mark.parametrize("model_name", BASICO_NAMES_MODELS)
