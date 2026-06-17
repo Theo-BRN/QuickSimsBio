@@ -2,8 +2,18 @@
 name = "quicksimsbio"
 version = "0.1.0"
 description = "A lightweight python package to use quasi random sampling easily with basico."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
-    {name = "Theo-BRN",email = "theobrn@live.co.uk"}
+    {name = "Theo-BRN", email = "theobrn@live.co.uk"}
+]
+keywords = ["systems biology", "COPASI", "basico", "ODE", "parameter scanning", "quasi-random sampling"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -19,10 +29,6 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "quicksimsbio"
-version = "0.1.0"
-description = "A lightweight python package to use quasi random sampling easily with basico."
-authors = ["Theo-BRN <theobrn@live.co.uk>"]
 packages = [
     { include = "quicksimsbio", from = "src" }
 ]
