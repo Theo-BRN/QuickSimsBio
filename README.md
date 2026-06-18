@@ -9,7 +9,7 @@ The public API is five functions:
 
 | Function                                          | What it does                                                                                                                            |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_model_inputs(model=None)`                    | Build a 'parameter scan dictionary', \_dictionary`skeleton (every tunable parameter/species, all set to`None`, to represent no change). |
+| `get_model_inputs(model=None)`                    | Build a `scan_dict` skeleton — every tunable parameter/species as a key, all set to `None` (meaning "hold at the model default").       |
 | `run_simulations(scan_dict, timepoints, ...)`     | Run a time course over every parameter combination in a `scan_dict`.                                                                    |
 | `generate_input_space(scan_dict, n_rand_samples)` | Expand a `scan_dict` into a table of parameter sets (grid × quasi-random).                                                              |
 | `get_basico_outputs(model=None)`                  | List the output column names a model exposes (for `output_selection`).                                                                  |
@@ -124,6 +124,9 @@ Supported models: `"3 parameter logistic"`, `"4 parameter logistic"`,
 poetry install
 poetry run pytest        # regression tests against bundled example models
 ```
+
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the package's design decisions, internal architecture,
+and maintainer notes — start here if you're inheriting or extending the codebase.
 
 ## License
 
