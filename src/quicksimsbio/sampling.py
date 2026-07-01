@@ -241,12 +241,14 @@ def run_simulations(
 
     if format_output == "wide":
         return sim_df_all
-    elif format_output != "long":
-        raise ValueError(
-            f"format_output must be 'wide' or 'long', got {format_output!r}"
-        )
-    else:
+    elif format_output == "long":
         return auto_melt(sim_df_all, model=dm)
+    elif format_output == "both":
+        return [sim_df_all, auto_melt(sim_df_all, model=dm)]
+    else:
+        raise ValueError(
+            f"format_output must be 'wide', 'long' or 'both', got {format_output!r}"
+        )
 
 
 def auto_melt(
