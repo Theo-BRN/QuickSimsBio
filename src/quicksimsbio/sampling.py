@@ -861,10 +861,20 @@ def extract_items_from_expression(expression):
     # Add any remaining parts as an item
     if construction_list:
         extracted_items.append(" ".join(construction_list))
-        # logger.debug(f"construction, {construction_list}, is extracted as a complete item: {extracted_items}")
 
-    # Remove any trailing or leading whitespace from the items
-    extracted_items = [item.strip() for item in extracted_items]
+    def strip_reference_braces(item: str) -> str:
+        """COPASI wraps a Values[...] reference in curly braces inside expression
+        strings when the referenced quantity's name contains spaces (e.g. the
+        auto-generated 'Initial for kL+' or 'TRUPATH System Max'). status_df stores
+        the un-braced display name, so strip one surrounding {...} pair so the
+        reference matches during dependency resolution."""
+        item = item.strip()
+        if item.startswith("{") and item.endswith("}"):
+            item = item[1:-1]
+        return item
+
+    # Remove surrounding whitespace and any COPASI reference braces from the items
+    extracted_items = [strip_reference_braces(item) for item in extracted_items]
 
     # Item could be a number
     def is_number(s: str) -> bool:

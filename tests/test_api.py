@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 import quicksimsbio as qsb
+from quicksimsbio.sampling import extract_items_from_expression
 
 BROAD_MODELS = ["brusselator", "LM-test1", "YeastGlycolysis", "MAPK-HF96-layout"]
 BASICO_NAMES_MODELS = ["LM-test1", "MAPK-HF96-layout"]
@@ -136,3 +137,27 @@ def test_get_basico_names_species_are_valid_simulation_outputs(model_name):
     )
     assert isinstance(result, pd.DataFrame)
     assert set(species_outputs) <= set(result.columns)
+
+
+# --- dependency resolution (auto_melt / long format) ---
+
+
+def test_extract_items_strips_copasi_reference_braces():
+    """COPASI braces a Values[...] reference whose name contains spaces (e.g. the
+    auto-generated 'Initial for kL+'). status_df stores the un-braced display name,
+    so the extractor must strip the braces or the long-format resolver crashes with
+    'Not all elements ... were present' (regression: BioModel MODEL2306220001)."""
+    assert extract_items_from_expression(
+        "{Values[Initial for kL+]} * {Values[Initial for alpha+]}"
+    ) == ["Values[Initial for kL+]", "Values[Initial for alpha+]"]
+
+    # Un-braced refs (incl. '+'/'-' names and nested brackets) are untouched.
+    assert extract_items_from_expression(
+        "( Values[[G]tot] - Values[LigandConcAdded] ) / Values[LigandConcAdded]"
+        " * {Values[TRUPATH System Max]}"
+    ) == [
+        "Values[[G]tot]",
+        "Values[LigandConcAdded]",
+        "Values[LigandConcAdded]",
+        "Values[TRUPATH System Max]",
+    ]
