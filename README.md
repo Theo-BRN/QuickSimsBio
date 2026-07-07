@@ -128,3 +128,9 @@ and maintainer notes — start here to contribute / extend the codebase.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Acknowledgements
+
+QuickSimsBio was begun during T. Redfern-Nichols's PhD in the Ladds Lab
+(Department of Pharmacology, University of Cambridge) and has been developed
+further at the University of Liverpool.
