@@ -1,34 +1,36 @@
 # Development guide
 
-Maintainer-facing notes for `quicksimsbio`: the design rationale, internal architecture, and the decisions that aren't obvious from reading the code alone. Start here if you're inheriting or extending the package. For *usage*, see the [README](README.md).
+These Maintainer-facing notes for `quicksimsbio` describe the design rationale, internal architecture, and underlying decisions. Start here if you're inheriting or extending the package. For _usage_ of the repo, see the [README](README.md).
 
 ## What this package is for
 
-`quicksimsbio` wraps [basico](https://basico.readthedocs.io/) (the Python interface to COPASI) to make ODE / systems-biology simulation, parameter scanning, and quasi-random sampling straightforward. Models are COPASI `.cps` files.
+QuickSimsBio wraps around [basico](https://basico.readthedocs.io/) (the Python interface to COPASI) to make ODE / systems-biology simulation, parameter scanning, and quasi-random sampling convenient and simple to implement. Any model that basico can load can be used by `quicksimsbio`; any COPASI `.cps` files, sbml files, or files via biomodels ID.
+
+QuickSimsBio is also the underlying package used for QuickSimsBio-UI, a streamlit-based graphic user interface (GUI) application.
 
 ## Project structure
 
 The package is two modules:
 
-| File | Role |
-|---|---|
-| `src/quicksimsbio/sampling.py` | **Core module.** Explicit-model API: simulation, `scan_dict` sampling, and the dependency-resolution pipeline behind `auto_melt`. All new simulation/sampling work goes here. |
-| `src/quicksimsbio/curve_fitting.py` | **Stable and standalone.** scipy curve fitting; no basico dependency. |
+| File                                | Role                                                                                                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/quicksimsbio/sampling.py`      | **Core module.** Explicit-model API: simulation, `scan_dict` sampling, and the dependency-resolution pipeline behind `auto_melt`. All new simulation/sampling work goes here. |
+| `src/quicksimsbio/curve_fitting.py` | **Stable and standalone.** scipy curve fitting; no basico dependency.                                                                                                         |
 
-The public API is exposed via `__init__.py` so only curated tools appear in autocomplete: callers do `from quicksimsbio import run_simulations`, and internal plumbing (underscore-prefixed, e.g. `_generate_parameter_sets_df`) stays hidden.
+The public API is exposed via `__init__.py` to allow curated tools to appear in autocomplete: callers do `from quicksimsbio import run_simulations`, and internal plumbing (underscore-prefixed, e.g. `_generate_parameter_sets_df`) stays hidden.
 
 Package source uses the `src/` (PEP 517) layout. No linter or formatter is configured.
 
 ## Public API (the stable tools)
 
-These five functions are what users and the GUI should call, and the names exported from `__init__.py`. Internal helpers (`auto_melt`, `get_dependency_status_dataframe`, `_generate_parameter_sets_df`, etc.) are **not** part of the user-facing API — callers should `pd.melt` manually when they need long format, and only reach for `auto_melt` when the data structure is already well understood.
+These five functions are what users should call, and the names exported from `__init__.py`. Internal helpers including `auto_melt`, `get_dependency_status_dataframe`, `_generate_parameter_sets_df`, etc.) are **not** part of the user-facing API. If users wish to transform wide-format dataframes to long-format dataframes (melting), they should `pd.melt` manually - only reaching for `auto_melt` when the data structure is already well understood.
 
-- **`get_model_inputs(model=None)`** — returns a scan dictionary '`scan_dict`' skeleton of all model inputs (all keys `None`) via a
+- **`get_model_inputs(model=None)`** — returns a scan dictionary '`scan_dict`' skeleton of all model inputs (all keys `None`) created via a
   temporary basico parameter set.
-- **`run_simulations(scan_dict, timepoints, output_selection, ..., model=None)`** — runs all parameter combinations from a `scan_dict`; returns a wide (default) or long (`format_output="long"`, via `auto_melt`) DataFrame.
 - **`generate_input_space(scan_dict, n_rand_samples)`** — quasi-random (Sobol/Halton/LHS) + grid sampling.
+- **`run_simulations(scan_dict, timepoints, output_selection, ..., model=None)`** — runs all parameter combinations from a `scan_dict`; returns a wide (default) or long (`format_output="long"`, via `auto_melt`) DataFrame.
 - **`fit_curve_to_data(x, y, model=...)`** — scipy curve fitting. Supports `"3 parameter logistic"`, `"4 parameter logistic"`, `"rectangular_hyperbola"`, `"straight_line"`.
-- **`get_basico_outputs(model=None)`** — inspect what output column names a model exposes; useful when building `output_selection` lists.
+- **`get_basico_outputs(model=None)`** — inspect what output column names a model can use; useful when building `output_selection` lists.
 
 ## Core design decisions
 
@@ -42,7 +44,7 @@ All functions in `sampling.py` accept `model: bsc.COPASI.CDataModel | None = Non
 
 ### Dependency classification (`auto_melt`)
 
-`auto_melt` builds a `status_df` that classifies every possible model output as `independent` or `dependent`. Pipeline: `get_dependency_status_dataframe()` → `create_status_df()` + `resolve_status_df()`. The logic handles:
+`auto_melt` automatically melts a wide-format dataframe to a long format dataframe, using calculated independent and dependent variables. To calculate these variables, `auto_melt` builds a `status_df` that classifies every possible model output as `independent` or `dependent`. Pipeline: `get_dependency_status_dataframe()` → `create_status_df()` + `resolve_status_df()`. The logic handles:
 
 - Fixed parameters → independent
 - Transient species → dependent
@@ -52,28 +54,26 @@ All functions in `sampling.py` accept `model: bsc.COPASI.CDataModel | None = Non
 
 `scan_dict` values can be:
 
-- `None` — hold at model default
+- `None` — hold at model's current value (default or what it was last changed to)
 - `list` — discrete values (grid scan)
-- `dict` with `{"lower": ..., "upper": ..., "log": bool}` —  quasi-random range
+- `dict` with `{"lower": ..., "upper": ..., "log": bool}` — quasi-random range
 
 `generate_input_space(scan_dict, n_rand_samples)` returns a wide DataFrame of parameter combinations (grid × Quasi random sampling).
 
 ### Leaning on basico
 
-Prefer basico-native functions to extract model information. `get_model_inputs` is a good example —
-it uses a temporary `bsc.add_parameter_set()` call rather than reimplementing parameter discovery.
-Follow this pattern when possible.
+This package is not meant as a replacement to basico, and should work well with it. Hence where possible, use basico-native functions to extract model information. `get_model_inputs` is a good example — it uses a temporary `bsc.add_parameter_set()` call rather than reimplementing parameter discovery. Ideally, follow this kind of pattern when possible.
 
 ## Output column naming (basico conventions)
 
-| Variable type | `output_selection` format |
-|---|---|
-| Transient species concentration | `[SpeciesName]` |
-| Initial species concentration | `[SpeciesName]_0` |
-| Fixed parameter (transient) | `Values[ParamName]` |
-| Fixed parameter (initial) | `Values[ParamName].InitialValue` |
-| Reaction flux | `(ReactionName).Flux` |
-| Time | `Time` |
+| Variable type                   | `output_selection` format        |
+| ------------------------------- | -------------------------------- |
+| Transient species concentration | `[SpeciesName]`                  |
+| Initial species concentration   | `[SpeciesName]_0`                |
+| Fixed parameter (transient)     | `Values[ParamName]`              |
+| Fixed parameter (initial)       | `Values[ParamName].InitialValue` |
+| Reaction flux                   | `(ReactionName).Flux`            |
+| Time                            | `Time`                           |
 
 ## Tests
 
@@ -85,6 +85,7 @@ both `format_output="wide"` and `"long"` (the `auto_melt` path), and that `gener
 The package logs via the standard `logging` module under the `quicksimsbio.*` namespace. For verbose output when diagnosing `auto_melt` or dependency resolution, call `logging.basicConfig(level=logging.DEBUG)` (or attach a file handler to the `quicksimsbio` logger).
 
 ## Setup & commands
+
 ```bash
 poetry install                              # install dependencies
 poetry run python -c "import quicksimsbio"  # smoke test
