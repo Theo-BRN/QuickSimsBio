@@ -131,6 +131,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgements
 
-QuickSimsBio was begun during T. Redfern-Nichols's PhD in the Ladds Lab
-(Department of Pharmacology, University of Cambridge) and has been developed
-further at the University of Liverpool.
+Development of QuickSimsBio began during T. Redfern-Nichols's PhD in the Ladds Lab (Department of Pharmacology, University of Cambridge). It has since been developed further at the University of Liverpool.
