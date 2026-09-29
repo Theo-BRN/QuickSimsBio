@@ -6,6 +6,7 @@ __pycache__/
 *.py[cod]
 
 # Local dev / personal files
+manual_testing/
 graph_visualisations/
 CLAUDE.md
 TODO.md

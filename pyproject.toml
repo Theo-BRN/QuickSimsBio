@@ -34,5 +34,7 @@ packages = [
 ]
 [dependency-groups]
 dev = [
-    "pytest (>=9.1.0,<10.0.0)"
+    "pytest (>=9.1.0,<10.0.0)",
+    "ipykernel (>=7.3.0,<8.0.0)",
+    "plotly (>=7.1.0,<8.0.0)"
 ]
