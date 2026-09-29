@@ -186,6 +186,7 @@ def run_simulations(
     include_time=None,
     n_rand_samples=None,
     model: bsc.COPASI.CDataModel | None = None,
+    rng=None,
     **kwargs,
 ):
     """Run time-course simulations over all parameter combinations in scan_dict.
@@ -211,7 +212,9 @@ def run_simulations(
     varying_params = {
         key: value for key, value in scan_dict.items() if value is not None
     }
-    param_sets_df = generate_input_space(varying_params, n_rand_samples, method=method)
+    param_sets_df = generate_input_space(
+        varying_params, n_rand_samples, method=method, rng=rng
+    )
 
     output_selection = _build_output_selection(
         model=dm,
