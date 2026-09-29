@@ -121,7 +121,7 @@ def _input_param_outputs(varying_params, model) -> list[str]:
     params = safe_df(bsc.get_parameters(model=model))
     set_params = set([] if params.empty else params.index)
     species_df = safe_df(bsc.get_species(model=model))
-    set_species = set(species_df.index)
+    set_species = set([] if species_df.empty else species_df["display_name"])
 
     output_params = [f"Values[{key}]" for key in varying_params if key in set_params]
     output_species = [f"[{key}]_0" for key in varying_params if key in set_species]
@@ -694,7 +694,8 @@ def set_model_parameters(param_set, *, model: bsc.COPASI.CDataModel):
     """
     # Get current model parameters and species
     model_parameters = safe_df(bsc.get_parameters(model=model)).index.tolist()
-    model_species = bsc.get_species(model=model).index.tolist()
+    species_df = safe_df(bsc.get_species(model=model))
+    model_species = [] if species_df.empty else species_df["display_name"].tolist()
 
     for param, value in param_set.items():
         if param in model_parameters:

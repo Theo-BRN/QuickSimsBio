@@ -81,6 +81,21 @@ def test_run_simulations_single_param_scan(model_name):
     assert len(result) >= len(timepoints)
 
 
+def test_run_simulations_sets_compartment_qualified_species():
+    """In multi-compartment models (e.g. array_1d) the same species name appears in
+    every compartment, so inputs are named like "Calcium{compartment[3]}". Setting
+    one must actually change that species' starting value."""
+    dm = bsc.load_example("array_1d")
+    inputs = qsb.get_model_inputs(model=dm)
+    key = "Calcium{compartment[3]}"
+    assert key in inputs
+    inputs[key] = [0.5, 1.0]
+    result = qsb.run_simulations(inputs, [0, 1], model=dm)
+    start = result.loc[result["Time"] == 0]
+    assert start[f"[{key}]"].tolist() == pytest.approx([0.5, 1.0])
+    assert start[f"[{key}]_0"].tolist() == pytest.approx([0.5, 1.0])
+
+
 # --- generate_input_space ---
 
 
