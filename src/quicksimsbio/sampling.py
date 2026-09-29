@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import basico as bsc
 import numpy as np
@@ -17,7 +17,7 @@ OUTPUT_TYPE_NAME = "Model_Output_Type"
 STATUS_LABEL = "dependency_status"
 
 
-def safe_df(df: Optional[pd.DataFrame]) -> pd.DataFrame:
+def safe_df(df: pd.DataFrame | None) -> pd.DataFrame:
     """Ensures a DataFrame is returned even if the source returns None."""
     return pd.DataFrame() if df is None else df
 
