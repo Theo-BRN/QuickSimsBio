@@ -3,7 +3,8 @@ Regression tests for the quicksimsbio public API.
 
 Models are loaded from basico's bundled examples — no .cps files needed.
 BROAD_MODELS covers a range of model structures for get_model_inputs and run_simulations.
-BASICO_NAMES_MODELS is the subset known to work with get_basico_names (see TODO step 4).
+BASICO_NAMES_MODELS is the subset used for the get_basico_outputs tests. It was originally
+restricted to models known to work; get_basico_outputs now also runs on the other BROAD_MODELS.
 """
 
 import basico as bsc
