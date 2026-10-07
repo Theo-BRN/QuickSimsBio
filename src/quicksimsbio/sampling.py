@@ -929,6 +929,7 @@ def get_basico_outputs(
     display_species=True,
     display_reactions=True,
     display_compartments=True,
+    display_reaction_parameters=True,
     *,
     model: bsc.COPASI.CDataModel | None = None,
 ):
@@ -1020,5 +1021,16 @@ def get_basico_outputs(
             )
             reactions_names.drop(columns=["display_name"], inplace=True)
             df_list.append(reactions_names)
+
+    # Build Reaction (local) Parameters Table
+    # basico's name, e.g. "(R1).k1", is already the output name. These have no
+    # ".InitialValue" or ".Rate" outputs, so only the Transient name is given.
+    if display_reaction_parameters:
+        reaction_params = safe_df(bsc.get_reaction_parameters(model=model))
+        if not reaction_params.empty:
+            reaction_param_names = pd.DataFrame(index=reaction_params.index)
+            reaction_param_names["Type"] = "Reaction Parameter"
+            reaction_param_names["Transient"] = reaction_params.index
+            df_list.append(reaction_param_names)
 
     return pd.concat(df_list) if df_list else pd.DataFrame()
