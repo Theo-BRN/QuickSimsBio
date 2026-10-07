@@ -79,8 +79,18 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
         for p, v in param_set["Initial Global Quantities"].items()
         if v["simulation_type"] == "fixed"
     ]
+    # Reaction (local) parameters are grouped by reaction: {reaction: {param: info}}.
+    # Keys use basico's "(Reaction).param" naming. Parameters mapped to a global
+    # quantity are reported as "assignment", so only "fixed" ones are settable inputs.
+    reaction_params = [
+        f"({reaction}).{param}"
+        for reaction, params in param_set["Kinetic Parameters"].items()
+        for param, v in params.items()
+        if v["simulation_type"] == "fixed"
+    ]
     inputs.extend(input_params)
     inputs.extend(species)
+    inputs.extend(reaction_params)
 
     scan_dict: dict[str, ScanValue] = {str(k): None for k in inputs}
 
