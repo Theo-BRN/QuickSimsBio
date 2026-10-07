@@ -147,6 +147,24 @@ def _input_param_outputs(varying_params, model) -> list[str]:
     return output_params + output_species
 
 
+def _warn_mapped_reaction_params(varying_params, model) -> None:
+    """Warns (once per run) about scan_dict keys that are reaction parameters mapped
+    to a global quantity. set_model_parameters skips these, as setting them would
+    change the global quantity instead."""
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if reaction_params_df.empty:
+        return
+    mapped_to = reaction_params_df.loc[
+        reaction_params_df["type"] != "local", "mapped_to"
+    ]
+    for key in varying_params:
+        if key in mapped_to.index:
+            logger.warning(
+                f"'{key}' is mapped to the global quantity '{mapped_to[key]}' and "
+                f"will not be changed. Vary '{mapped_to[key]}' in the scan_dict instead."
+            )
+
+
 def _build_output_selection(
     model,
     output_selection,
@@ -222,6 +240,7 @@ def run_simulations(
     varying_params = {
         key: value for key, value in scan_dict.items() if value is not None
     }
+    _warn_mapped_reaction_params(varying_params, model=dm)
     param_sets_df = generate_input_space(
         varying_params, n_rand_samples, method=method, rng=rng
     )
@@ -694,18 +713,28 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
 
 def set_model_parameters(param_set, *, model: bsc.COPASI.CDataModel):
     """
-    Update model parameters and initial species concentrations based on the provided parameter set.
+    Update model parameters, initial species concentrations and reaction parameters based on the provided parameter set.
 
-    The function checks each key in the parameter set and identifies if it's a model parameter or a species.
-    It then updates the model accordingly.
+    The function checks each key in the parameter set and identifies if it's a model parameter, a species
+    or a reaction parameter (e.g. "(R1).k1"). It then updates the model accordingly.
 
     Parameters:
     - param_set (dict): Dictionary containing parameter names/species as keys and desired values/concentrations as values.
     """
-    # Get current model parameters and species
+    # Get current model parameters, species and reaction parameters
     model_parameters = safe_df(bsc.get_parameters(model=model)).index.tolist()
     species_df = safe_df(bsc.get_species(model=model))
     model_species = [] if species_df.empty else species_df["display_name"].tolist()
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if reaction_params_df.empty:
+        local_reaction_params = []
+        mapped_reaction_params = {}
+    else:
+        is_local = reaction_params_df["type"] == "local"
+        local_reaction_params = reaction_params_df.index[is_local].tolist()
+        mapped_reaction_params = reaction_params_df.loc[
+            ~is_local, "mapped_to"
+        ].to_dict()
 
     for param, value in param_set.items():
         if param in model_parameters:
@@ -719,6 +748,13 @@ def set_model_parameters(param_set, *, model: bsc.COPASI.CDataModel):
                 concentration=value,
                 model=model,
             )
+        elif param in local_reaction_params:
+            bsc.set_reaction_parameters(name=param, value=value, model=model)
+        elif param in mapped_reaction_params:
+            # Setting a mapped reaction parameter would silently change the global
+            # quantity it is mapped to (and every other reaction using it), so skip.
+            # The user is warned once per run in _warn_mapped_reaction_params.
+            pass
 
 
 def initialise_status_df(*, model: bsc.COPASI.CDataModel):
