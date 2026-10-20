@@ -91,3 +91,14 @@ poetry install                              # install dependencies
 poetry run python -c "import quicksimsbio"  # smoke test
 poetry run pytest                           # regression tests
 ```
+
+## Known issues / TODO
+
+- **Assigned compartments in dependency resolution.** `resolve_status_df` builds its
+  expression mapping from assigned *parameters* only (`bsc.get_parameters`). An assigned
+  compartment is marked `unknown` in `create_status_df` but gets no expression, so it likely
+  fails in `extract_items_from_expression` (NaN input). Untested — needs a model with an
+  assigned compartment to confirm.
+- **ODE-type global quantities** are not classified by `create_status_df` (status stays `None`).
+  Anything depending on one — including a rate constant mapped to one — cannot be resolved.
+  Rare; not currently handled.

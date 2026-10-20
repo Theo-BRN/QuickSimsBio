@@ -3,7 +3,8 @@ Regression tests for the quicksimsbio public API.
 
 Models are loaded from basico's bundled examples — no .cps files needed.
 BROAD_MODELS covers a range of model structures for get_model_inputs and run_simulations.
-BASICO_NAMES_MODELS is the subset known to work with get_basico_names (see TODO step 4).
+BASICO_NAMES_MODELS is the subset used for the get_basico_outputs tests. It was originally
+restricted to models known to work; get_basico_outputs now also runs on the other BROAD_MODELS.
 """
 
 import basico as bsc
@@ -11,7 +12,11 @@ import pandas as pd
 import pytest
 
 import quicksimsbio as qsb
-from quicksimsbio.sampling import extract_items_from_expression
+from quicksimsbio.sampling import (
+    STATUS_LABEL,
+    extract_items_from_expression,
+    get_dependency_status_dataframe,
+)
 
 BROAD_MODELS = ["brusselator", "LM-test1", "YeastGlycolysis", "MAPK-HF96-layout"]
 BASICO_NAMES_MODELS = ["LM-test1", "MAPK-HF96-layout"]
@@ -176,3 +181,98 @@ def test_extract_items_strips_copasi_reference_braces():
         "Values[LigandConcAdded]",
         "Values[TRUPATH System Max]",
     ]
+
+
+# --- reaction parameters (rate constants) ---
+
+
+def _brusselator_with_mapped_rate_constants():
+    """Brusselator with extra globals, each reaction's k1 mapped to one of them, so
+    every dependency case for a mapped rate constant is present. (R4).k1 stays local.
+    These globals are test scaffolding — the real brusselator has none."""
+    dm = bsc.load_example("brusselator")
+    bsc.add_parameter("kg", initial_value=5.0, model=dm)  # fixed
+    bsc.add_parameter("ka", type="assignment", expression="[X] * 2", model=dm)
+    bsc.add_parameter("kb", type="assignment", expression="Values[kg] * 2", model=dm)
+    bsc.set_reaction_parameters("(R1).k1", mapped_to="kg", model=dm)
+    bsc.set_reaction_parameters("(R2).k1", mapped_to="ka", model=dm)
+    bsc.set_reaction_parameters("(R3).k1", mapped_to="kb", model=dm)
+    return dm
+
+
+@pytest.mark.parametrize("model_name", BROAD_MODELS)
+def test_get_model_inputs_reaction_params_match_basico_names(model_name):
+    """Local reaction parameter keys must be exactly basico's own names, e.g. "(R1).k1",
+    so they can be set and selected as outputs without translation."""
+    dm = bsc.load_example(model_name)
+    inputs = qsb.get_model_inputs(model=dm)
+    reaction_params = bsc.get_reaction_parameters(model=dm)
+    local_names = set(reaction_params.index[reaction_params["type"] == "local"])
+    assert len(local_names) > 0
+    assert local_names <= set(inputs)
+
+
+def test_get_model_inputs_excludes_mapped_reaction_params():
+    dm = _brusselator_with_mapped_rate_constants()
+    inputs = qsb.get_model_inputs(model=dm)
+    assert "(R4).k1" in inputs
+    for mapped in ["(R1).k1", "(R2).k1", "(R3).k1"]:
+        assert mapped not in inputs
+
+
+def test_get_basico_outputs_lists_reaction_params():
+    dm = bsc.load_example("brusselator")
+    names = qsb.get_basico_outputs(model=dm)
+    reaction_param_rows = names[names["Type"] == "Reaction Parameter"]
+    assert set(reaction_param_rows["Transient"]) == {
+        "(R1).k1",
+        "(R2).k1",
+        "(R3).k1",
+        "(R4).k1",
+    }
+    names_without = qsb.get_basico_outputs(display_reaction_parameters=False, model=dm)
+    assert "Reaction Parameter" not in set(names_without["Type"])
+
+
+def test_run_simulations_reaction_param_scan():
+    """Varying a rate constant must change the simulation, and its value must be
+    recorded in the results (wide and long)."""
+    dm = bsc.load_example("brusselator")
+    inputs = qsb.get_model_inputs(model=dm)
+    inputs["(R1).k1"] = [0.5, 2.0]
+
+    wide = qsb.run_simulations(inputs, [0, 5], model=dm)
+    assert "(R1).k1" in wide.columns
+    end = wide.loc[wide["Time"] == 5]
+    assert end["(R1).k1"].tolist() == pytest.approx([0.5, 2.0])
+    assert end["[X]"].iloc[0] != pytest.approx(end["[X]"].iloc[1])
+
+    long = qsb.run_simulations(inputs, [0, 5], format_output="long", model=dm)
+    assert "(R1).k1" in long.columns  # kept as an independent (id) column
+    assert set(long["(R1).k1"]) == {0.5, 2.0}
+
+
+def test_run_simulations_skips_mapped_reaction_param(caplog):
+    """A mapped rate constant must not be set (that would change its global quantity),
+    and the user is warned once per run, not once per simulation."""
+    dm = _brusselator_with_mapped_rate_constants()
+    inputs = qsb.get_model_inputs(model=dm)
+    inputs["(R1).k1"] = [0.5, 1.0, 2.0]
+    result = qsb.run_simulations(
+        inputs, [0, 5], output_selection=["(R1).k1", "Values[kg]"], model=dm
+    )
+    assert result["Values[kg]"].tolist() == pytest.approx([5.0] * len(result))
+    assert result["(R1).k1"].tolist() == pytest.approx([5.0] * len(result))
+    mapped_warnings = [r for r in caplog.records if "is mapped to" in r.getMessage()]
+    assert len(mapped_warnings) == 1
+
+
+def test_dependency_status_of_reaction_params():
+    """Local rate constants are independent; a mapped one takes the status of the
+    global quantity it is mapped to, resolved through any chain of assignments."""
+    dm = _brusselator_with_mapped_rate_constants()
+    status = get_dependency_status_dataframe(model=dm)[STATUS_LABEL]
+    assert status["(R4).k1"] == "independent"  # local
+    assert status["(R1).k1"] == "independent"  # -> kg (fixed)
+    assert status["(R2).k1"] == "dependent"  # -> ka = [X] * 2
+    assert status["(R3).k1"] == "independent"  # -> kb = Values[kg] * 2

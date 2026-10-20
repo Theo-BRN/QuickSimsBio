@@ -79,8 +79,18 @@ def get_model_inputs(model=None) -> dict[str, ScanValue]:
         for p, v in param_set["Initial Global Quantities"].items()
         if v["simulation_type"] == "fixed"
     ]
+    # Reaction (local) parameters are grouped by reaction: {reaction: {param: info}}.
+    # Keys use basico's "(Reaction).param" naming. Parameters mapped to a global
+    # quantity are reported as "assignment", so only "fixed" ones are settable inputs.
+    reaction_params = [
+        f"({reaction}).{param}"
+        for reaction, params in param_set["Kinetic Parameters"].items()
+        for param, v in params.items()
+        if v["simulation_type"] == "fixed"
+    ]
     inputs.extend(input_params)
     inputs.extend(species)
+    inputs.extend(reaction_params)
 
     scan_dict: dict[str, ScanValue] = {str(k): None for k in inputs}
 
@@ -116,25 +126,48 @@ def _default_species_outputs(model, conc_or_number="Concentration") -> list[str]
 
 
 def _input_param_outputs(varying_params, model) -> list[str]:
-    """Returns basico output names for the parameters/species that were varied,
-    so results DataFrames record what changed in each simulation."""
+    """Returns basico output names for the parameters/species/reaction parameters that
+    were varied, so results DataFrames record what changed in each simulation."""
     params = safe_df(bsc.get_parameters(model=model))
     set_params = set([] if params.empty else params.index)
     species_df = safe_df(bsc.get_species(model=model))
     set_species = set([] if species_df.empty else species_df["display_name"])
+    rxn_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    set_rxn_params = set([] if rxn_params_df.empty else rxn_params_df.index)
 
     output_params = [f"Values[{key}]" for key in varying_params if key in set_params]
     output_species = [f"[{key}]_0" for key in varying_params if key in set_species]
+    output_rxn_params = [key for key in varying_params if key in set_rxn_params]
 
     unrecognised = [
-        key for key in varying_params if key not in set_params | set_species
+        key
+        for key in varying_params
+        if key not in set_params | set_species | set_rxn_params
     ]
     if unrecognised:
         logger.warning(
-            f"scan_dict items {unrecognised} were not recognised as species or parameters"
+            f"scan_dict items {unrecognised} were not recognised as species, parameters or reaction parameters"
         )
 
-    return output_params + output_species
+    return output_params + output_species + output_rxn_params
+
+
+def _warn_mapped_reaction_params(varying_params, model) -> None:
+    """Warns (once per run) about scan_dict keys that are reaction parameters mapped
+    to a global quantity. set_model_parameters skips these, as setting them would
+    change the global quantity instead."""
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if reaction_params_df.empty:
+        return
+    mapped_to = reaction_params_df.loc[
+        reaction_params_df["type"] != "local", "mapped_to"
+    ]
+    for key in varying_params:
+        if key in mapped_to.index:
+            logger.warning(
+                f"'{key}' is mapped to the global quantity '{mapped_to[key]}' and "
+                f"will not be changed. Vary '{mapped_to[key]}' in the scan_dict instead."
+            )
 
 
 def _build_output_selection(
@@ -212,6 +245,7 @@ def run_simulations(
     varying_params = {
         key: value for key, value in scan_dict.items() if value is not None
     }
+    _warn_mapped_reaction_params(varying_params, model=dm)
     param_sets_df = generate_input_space(
         varying_params, n_rand_samples, method=method, rng=rng
     )
@@ -608,13 +642,33 @@ def create_status_df(*, model: bsc.COPASI.CDataModel):
     status_df.loc[is_assigned_comp, ["Type"]] = "Assigned Compartment"
     status_df.loc[is_assigned_comp, STATUS_LABEL] = "unknown"
 
+    # Reaction parameters are local (fixed) or mapped to a global quantity (assigned)
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if not reaction_params_df.empty:
+        is_local = reaction_params_df["type"] == "local"
+        local_rps = reaction_params_df.index[is_local]
+        mapped_rps = reaction_params_df.index[~is_local]
+
+        is_local_rp = (status_df["Type"] == "Reaction Parameter") & (
+            status_df["Core_Constituent"].isin(local_rps)
+        )
+        is_mapped_rp = (status_df["Type"] == "Reaction Parameter") & (
+            status_df["Core_Constituent"].isin(mapped_rps)
+        )
+
+        status_df.loc[is_local_rp, ["Type"]] = "Local Reaction Parameter"
+        status_df.loc[is_local_rp, STATUS_LABEL] = "independent"
+        status_df.loc[is_mapped_rp, ["Type"]] = "Mapped Reaction Parameter"
+        status_df.loc[is_mapped_rp, STATUS_LABEL] = "unknown"
+
     return status_df
 
 
 def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
     """
     Function takes in a status_df made by `create_status_df()` and resolves any unknown dependencies.
-    These unknown dependencies arise from assigned parameters or compartments.
+    These unknown dependencies arise from assigned parameters or compartments, and
+    from reaction parameters mapped to a global quantity.
     """
 
     # Early return when there is nothing to resolve - when no model parameters
@@ -624,17 +678,28 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
 
     # Generating expressions mapping
     param_df = safe_df(bsc.get_parameters(model=model))
-    agq_expressions = param_df[param_df["type"] == "assignment"].set_index(
-        "display_name"
-    )["expression"]
-    logger.info(f"agq_expressions is:\n{agq_expressions}\n\n")
+    expressions = param_df[param_df["type"] == "assignment"].set_index("display_name")[
+        "expression"
+    ]
+
+    # A mapped reaction parameter takes the value of its global quantity, so it is
+    # treated as an assignment whose expression is just that quantity, e.g.
+    # "(R1).k1" -> "Values[kg]"
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if not reaction_params_df.empty:
+        mapped_to = reaction_params_df.loc[
+            reaction_params_df["type"] != "local", "mapped_to"
+        ]
+        mapped_expressions = mapped_to.map(param_df["display_name"])
+        expressions = pd.concat([expressions, mapped_expressions])
+    logger.info(f"expressions is:\n{expressions}\n\n")
 
     # Generating the 'unresolved_df'
     unresolved_df = status_df.loc[status_df[STATUS_LABEL] == "unknown", :].copy()
     logger.info(f"unresolved_df is:\n{unresolved_df}")
 
     # Combining expressions mapping with 'unresolved_df'
-    unresolved_df["expression"] = unresolved_df["Core_Constituent"].map(agq_expressions)
+    unresolved_df["expression"] = unresolved_df["Core_Constituent"].map(expressions)
     logger.info(f"unresolved_df with mapped expressions is:\n{unresolved_df}")
 
     unresolved_df["constituent_elements"] = unresolved_df["expression"].map(
@@ -642,7 +707,7 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
     )
 
     logger.debug(f"Attempting to resolve the following unresolved df:\n{unresolved_df}")
-    logger.debug(f"Using this mapping:\n{agq_expressions}")
+    logger.debug(f"Using this mapping:\n{expressions}")
 
     # Iterate through to solve the 'unresolved_df', if possible
     previous_unknowns = set()
@@ -684,18 +749,28 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
 
 def set_model_parameters(param_set, *, model: bsc.COPASI.CDataModel):
     """
-    Update model parameters and initial species concentrations based on the provided parameter set.
+    Update model parameters, initial species concentrations and reaction parameters based on the provided parameter set.
 
-    The function checks each key in the parameter set and identifies if it's a model parameter or a species.
-    It then updates the model accordingly.
+    The function checks each key in the parameter set and identifies if it's a model parameter, a species
+    or a reaction parameter (e.g. "(R1).k1"). It then updates the model accordingly.
 
     Parameters:
     - param_set (dict): Dictionary containing parameter names/species as keys and desired values/concentrations as values.
     """
-    # Get current model parameters and species
+    # Get current model parameters, species and reaction parameters
     model_parameters = safe_df(bsc.get_parameters(model=model)).index.tolist()
     species_df = safe_df(bsc.get_species(model=model))
     model_species = [] if species_df.empty else species_df["display_name"].tolist()
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if reaction_params_df.empty:
+        local_reaction_params = []
+        mapped_reaction_params = {}
+    else:
+        is_local = reaction_params_df["type"] == "local"
+        local_reaction_params = reaction_params_df.index[is_local].tolist()
+        mapped_reaction_params = reaction_params_df.loc[
+            ~is_local, "mapped_to"
+        ].to_dict()
 
     for param, value in param_set.items():
         if param in model_parameters:
@@ -709,6 +784,13 @@ def set_model_parameters(param_set, *, model: bsc.COPASI.CDataModel):
                 concentration=value,
                 model=model,
             )
+        elif param in local_reaction_params:
+            bsc.set_reaction_parameters(name=param, value=value, model=model)
+        elif param in mapped_reaction_params:
+            # Setting a mapped reaction parameter would silently change the global
+            # quantity it is mapped to (and every other reaction using it), so skip.
+            # The user is warned once per run in _warn_mapped_reaction_params.
+            pass
 
 
 def initialise_status_df(*, model: bsc.COPASI.CDataModel):
@@ -919,6 +1001,7 @@ def get_basico_outputs(
     display_species=True,
     display_reactions=True,
     display_compartments=True,
+    display_reaction_parameters=True,
     *,
     model: bsc.COPASI.CDataModel | None = None,
 ):
@@ -1010,5 +1093,16 @@ def get_basico_outputs(
             )
             reactions_names.drop(columns=["display_name"], inplace=True)
             df_list.append(reactions_names)
+
+    # Build Reaction (local) Parameters Table
+    # basico's name, e.g. "(R1).k1", is already the output name. These have no
+    # ".InitialValue" or ".Rate" outputs, so only the Transient name is given.
+    if display_reaction_parameters:
+        reaction_params = safe_df(bsc.get_reaction_parameters(model=model))
+        if not reaction_params.empty:
+            reaction_param_names = pd.DataFrame(index=reaction_params.index)
+            reaction_param_names["Type"] = "Reaction Parameter"
+            reaction_param_names["Transient"] = reaction_params.index
+            df_list.append(reaction_param_names)
 
     return pd.concat(df_list) if df_list else pd.DataFrame()
