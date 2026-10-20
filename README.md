@@ -1,5 +1,7 @@
 # QuickSimsBio
 
+[![DOI](https://zenodo.org/badge/1229699655.svg)](https://doi.org/10.5281/zenodo.23503471)
+
 A lightweight Python package wrapped around [basico](https://basico.readthedocs.io/) (the Python interface to [COPASI](http://copasi.org/)). QuickSimsBio provides convenient functions for the process of running mechanistic model / systems biology simulations and adds some additional functionality like quasi-random sampling, curve fitting and automatic dataframe melting to a long format. It should be used alongside basico for convenience for certain functions.
 
 The public API is five functions:
