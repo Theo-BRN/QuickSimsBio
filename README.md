@@ -4,13 +4,13 @@ A lightweight Python package wrapped around [basico](https://basico.readthedocs.
 
 The public API is five functions:
 
-| Function                                          | What it does                                                                                    |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `get_model_inputs(model=None)`                    | Build a scan dictionary `scan_dict` skeleton — where every tunable parameter/species is a key.  |
-| `generate_input_space(scan_dict, n_rand_samples)` | Expand a `scan_dict` into a table of parameter sets (grid × quasi-random bounds).               |
-| `run_simulations(scan_dict, timepoints, ...)`     | Run a time course simulation for each parameter combination in a `scan_dict`.                   |
-| `get_basico_outputs(model=None)`                  | Display the possible output column names for a given model (can be used in `output_selection`). |
-| `fit_curve_to_data(x, y, model=...)`              | Fit a curve (logistic / hyperbola / line) to data via scipy.                                    |
+| Function                                          | What it does                                                                                           |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `get_model_inputs(model=None)`                    | Build a scan dictionary `scan_dict` skeleton — every tunable parameter/species/rate constant is a key. |
+| `generate_input_space(scan_dict, n_rand_samples)` | Expand a `scan_dict` into a table of parameter sets (grid × quasi-random bounds).                      |
+| `run_simulations(scan_dict, timepoints, ...)`     | Run a time course simulation for each parameter combination in a `scan_dict`.                          |
+| `get_basico_outputs(model=None)`                  | Display the possible output column names for a given model (can be used in `output_selection`).        |
+| `fit_curve_to_data(x, y, model=...)`              | Fit a curve (logistic / hyperbola / line) to data via scipy.                                           |
 
 All simulation functions can take an explicit `model=` argument. If omitted, functions fall back to
 basico's currently loaded model. Passing `model=dm` explicitly is useful when working with multiple different models, and is demonstrated in the quick start examples.
@@ -38,8 +38,13 @@ dm = bsc.load_example("brusselator")
 # or bsc.load_model("path/to/your_model.cps")
 
 inputs = qsb.get_model_inputs(model=dm)
-# {'X': None, 'Y': None, 'A': None, 'B': None, ...}  -> None means no change to the parameter, hence uses current value
+# {'X': None, 'Y': None, 'A': None, 'B': None, ..., '(R1).k1': None, ...}
+# -> None means no change to the input, hence uses current value
 ```
+
+Inputs are the model's fixed global parameters, its species (initial concentrations), and its
+reaction (local) parameters such as rate constants. Reaction parameters use basico's
+`(ReactionName).ParamName` naming, e.g. `(R1).k1`.
 
 ### 2. Run a single simulation
 
@@ -57,9 +62,21 @@ A `scan_dict` value can be:
 - a `dict` `{"lower": ..., "upper": ..., "log": bool}` — a quasi-random range
 
 ```python
-inputs["B"] = [2.0, 3.0, 4.0] # 3-point grid scan over parameter B
+inputs["B"] = [2.0, 3.0, 4.0] # 3-point grid scan over the initial concentration of species B
 result = qsb.run_simulations(inputs, [0, 1, 2, 3, 4, 5], model=dm)   # runs 3 simulations, from 0-5 seconds
 ```
+
+Reaction rate constants are scanned the same way:
+
+```python
+inputs = qsb.get_model_inputs(model=dm)
+inputs["(R1).k1"] = [0.5, 1.0, 2.0] # 3-point grid scan over rate constant k1 of reaction R1
+result = qsb.run_simulations(inputs, [0, 5, 10], model=dm)
+```
+
+A rate constant that is _mapped_ to a global quantity (in COPASI, the reaction uses a global
+parameter instead of its own local value) is not listed by `get_model_inputs` and is not changed
+if supplied — vary the global parameter instead. A warning is logged if you try.
 
 Get the results in a nicer (long) format for plotting with `format_output="long"`:
 
@@ -107,13 +124,17 @@ Supported models: `"3 parameter logistic"`, `"4 parameter logistic"`,
 
 ## Output column naming (basico conventions)
 
-| Variable type                   | `output_selection` format |
-| ------------------------------- | ------------------------- |
-| Transient species concentration | `[SpeciesName]`           |
-| Initial species concentration   | `[SpeciesName]_0`         |
-| Fixed parameter (transient)     | `Values[ParamName]`       |
-| Reaction flux                   | `(ReactionName).Flux`     |
-| Time                            | `Time`                    |
+| Variable type                   | `output_selection` format        |
+| ------------------------------- | -------------------------------- |
+| Transient species concentration | `[SpeciesName]`                  |
+| Initial species concentration   | `[SpeciesName]_0`                |
+| Fixed parameter (transient)     | `Values[ParamName]`              |
+| Fixed parameter (initial)       | `Values[ParamName].InitialValue` |
+| Reaction (local) parameter      | `(ReactionName).ParamName`       |
+| Reaction flux                   | `(ReactionName).Flux`            |
+| Time                            | `Time`                           |
+
+(Though follow basico documentation if there is a conflict).
 
 ## Development
 

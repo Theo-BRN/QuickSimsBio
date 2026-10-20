@@ -2,9 +2,7 @@
 Regression tests for the quicksimsbio public API.
 
 Models are loaded from basico's bundled examples — no .cps files needed.
-BROAD_MODELS covers a range of model structures for get_model_inputs and run_simulations.
-BASICO_NAMES_MODELS is the subset used for the get_basico_outputs tests. It was originally
-restricted to models known to work; get_basico_outputs now also runs on the other BROAD_MODELS.
+BROAD_MODELS covers a range of model structures and is used across the public API tests.
 """
 
 import basico as bsc
@@ -19,7 +17,6 @@ from quicksimsbio.sampling import (
 )
 
 BROAD_MODELS = ["brusselator", "LM-test1", "YeastGlycolysis", "MAPK-HF96-layout"]
-BASICO_NAMES_MODELS = ["LM-test1", "MAPK-HF96-layout"]
 
 
 # --- get_model_inputs ---
@@ -134,17 +131,17 @@ def test_generate_input_space_does_not_mutate_scan_dict():
 # --- get_basico_outputs ---
 
 
-@pytest.mark.parametrize("model_name", BASICO_NAMES_MODELS)
-def test_get_basico_names_returns_dataframe_with_type_column(model_name):
+@pytest.mark.parametrize("model_name", BROAD_MODELS)
+def test_get_basico_outputs_returns_dataframe_with_type_column(model_name):
     dm = bsc.load_example(model_name)
     names = qsb.get_basico_outputs(model=dm)
     assert isinstance(names, pd.DataFrame)
     assert "Type" in names.columns
 
 
-@pytest.mark.parametrize("model_name", BASICO_NAMES_MODELS)
-def test_get_basico_names_species_are_valid_simulation_outputs(model_name):
-    """Species names from get_basico_names should be accepted by run_simulations."""
+@pytest.mark.parametrize("model_name", BROAD_MODELS)
+def test_get_basico_outputs_species_are_valid_simulation_outputs(model_name):
+    """Species names from get_basico_outputs should be accepted by run_simulations."""
     dm = bsc.load_example(model_name)
     inputs = qsb.get_model_inputs(model=dm)
     names = qsb.get_basico_outputs(model=dm)
