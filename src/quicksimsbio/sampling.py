@@ -637,13 +637,33 @@ def create_status_df(*, model: bsc.COPASI.CDataModel):
     status_df.loc[is_assigned_comp, ["Type"]] = "Assigned Compartment"
     status_df.loc[is_assigned_comp, STATUS_LABEL] = "unknown"
 
+    # Reaction parameters are local (fixed) or mapped to a global quantity (assigned)
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if not reaction_params_df.empty:
+        is_local = reaction_params_df["type"] == "local"
+        local_rps = reaction_params_df.index[is_local]
+        mapped_rps = reaction_params_df.index[~is_local]
+
+        is_local_rp = (status_df["Type"] == "Reaction Parameter") & (
+            status_df["Core_Constituent"].isin(local_rps)
+        )
+        is_mapped_rp = (status_df["Type"] == "Reaction Parameter") & (
+            status_df["Core_Constituent"].isin(mapped_rps)
+        )
+
+        status_df.loc[is_local_rp, ["Type"]] = "Local Reaction Parameter"
+        status_df.loc[is_local_rp, STATUS_LABEL] = "independent"
+        status_df.loc[is_mapped_rp, ["Type"]] = "Mapped Reaction Parameter"
+        status_df.loc[is_mapped_rp, STATUS_LABEL] = "unknown"
+
     return status_df
 
 
 def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
     """
     Function takes in a status_df made by `create_status_df()` and resolves any unknown dependencies.
-    These unknown dependencies arise from assigned parameters or compartments.
+    These unknown dependencies arise from assigned parameters or compartments, and
+    from reaction parameters mapped to a global quantity.
     """
 
     # Early return when there is nothing to resolve - when no model parameters
@@ -653,17 +673,28 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
 
     # Generating expressions mapping
     param_df = safe_df(bsc.get_parameters(model=model))
-    agq_expressions = param_df[param_df["type"] == "assignment"].set_index(
-        "display_name"
-    )["expression"]
-    logger.info(f"agq_expressions is:\n{agq_expressions}\n\n")
+    expressions = param_df[param_df["type"] == "assignment"].set_index("display_name")[
+        "expression"
+    ]
+
+    # A mapped reaction parameter takes the value of its global quantity, so it is
+    # treated as an assignment whose expression is just that quantity, e.g.
+    # "(R1).k1" -> "Values[kg]"
+    reaction_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    if not reaction_params_df.empty:
+        mapped_to = reaction_params_df.loc[
+            reaction_params_df["type"] != "local", "mapped_to"
+        ]
+        mapped_expressions = mapped_to.map(param_df["display_name"])
+        expressions = pd.concat([expressions, mapped_expressions])
+    logger.info(f"expressions is:\n{expressions}\n\n")
 
     # Generating the 'unresolved_df'
     unresolved_df = status_df.loc[status_df[STATUS_LABEL] == "unknown", :].copy()
     logger.info(f"unresolved_df is:\n{unresolved_df}")
 
     # Combining expressions mapping with 'unresolved_df'
-    unresolved_df["expression"] = unresolved_df["Core_Constituent"].map(agq_expressions)
+    unresolved_df["expression"] = unresolved_df["Core_Constituent"].map(expressions)
     logger.info(f"unresolved_df with mapped expressions is:\n{unresolved_df}")
 
     unresolved_df["constituent_elements"] = unresolved_df["expression"].map(
@@ -671,7 +702,7 @@ def resolve_status_df(status_df, *, model: bsc.COPASI.CDataModel):
     )
 
     logger.debug(f"Attempting to resolve the following unresolved df:\n{unresolved_df}")
-    logger.debug(f"Using this mapping:\n{agq_expressions}")
+    logger.debug(f"Using this mapping:\n{expressions}")
 
     # Iterate through to solve the 'unresolved_df', if possible
     previous_unknowns = set()
