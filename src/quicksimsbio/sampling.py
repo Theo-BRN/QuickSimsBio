@@ -126,25 +126,30 @@ def _default_species_outputs(model, conc_or_number="Concentration") -> list[str]
 
 
 def _input_param_outputs(varying_params, model) -> list[str]:
-    """Returns basico output names for the parameters/species that were varied,
-    so results DataFrames record what changed in each simulation."""
+    """Returns basico output names for the parameters/species/reaction parameters that
+    were varied, so results DataFrames record what changed in each simulation."""
     params = safe_df(bsc.get_parameters(model=model))
     set_params = set([] if params.empty else params.index)
     species_df = safe_df(bsc.get_species(model=model))
     set_species = set([] if species_df.empty else species_df["display_name"])
+    rxn_params_df = safe_df(bsc.get_reaction_parameters(model=model))
+    set_rxn_params = set([] if rxn_params_df.empty else rxn_params_df.index)
 
     output_params = [f"Values[{key}]" for key in varying_params if key in set_params]
     output_species = [f"[{key}]_0" for key in varying_params if key in set_species]
+    output_rxn_params = [key for key in varying_params if key in set_rxn_params]
 
     unrecognised = [
-        key for key in varying_params if key not in set_params | set_species
+        key
+        for key in varying_params
+        if key not in set_params | set_species | set_rxn_params
     ]
     if unrecognised:
         logger.warning(
-            f"scan_dict items {unrecognised} were not recognised as species or parameters"
+            f"scan_dict items {unrecognised} were not recognised as species, parameters or reaction parameters"
         )
 
-    return output_params + output_species
+    return output_params + output_species + output_rxn_params
 
 
 def _warn_mapped_reaction_params(varying_params, model) -> None:
